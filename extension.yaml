@@ -1,0 +1,7 @@
+﻿Id: SteamBuildTracker_Plugin
+Name: Steam Build Tracker
+Author: Jlrx
+Version: 1.0.0
+Module: SteamBuildTracker.dll
+Type: GenericPlugin
+Icon: icon.png
