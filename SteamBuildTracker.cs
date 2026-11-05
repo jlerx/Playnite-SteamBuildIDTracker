@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+﻿using Playnite.SDK.Data;
 using Playnite.SDK;
 using Playnite.SDK.Events;
 using Playnite.SDK.Models;
@@ -23,6 +22,14 @@ namespace SteamBuildTracker
         public string LastKnownOnlineBuildId { get; set; }
     }
 
+    public class SteamSearchItem { public int Id { get; set; } public string Name { get; set; } }
+    public class SteamSearchResponse { public List<SteamSearchItem> Items { get; set; } }
+
+    public class SteamCmdBranch { public string BuildId { get; set; } }
+    public class SteamCmdDepots { public Dictionary<string, SteamCmdBranch> Branches { get; set; } }
+    public class SteamCmdApp { public SteamCmdDepots Depots { get; set; } }
+    public class SteamCmdResponse { public Dictionary<string, SteamCmdApp> Data { get; set; } }
+
     public class SteamBuildTracker : GenericPlugin
     {
         private static readonly ILogger logger = LogManager.GetLogger();
@@ -35,12 +42,19 @@ namespace SteamBuildTracker
         public SteamBuildTracker(IPlayniteAPI api) : base(api)
         {
             dataFile = Path.Combine(GetPluginUserDataPath(), "tracked.json");
-            if (File.Exists(dataFile))
-                tracked = JsonConvert.DeserializeObject<Dictionary<Guid, TrackedGame>>(File.ReadAllText(dataFile))
-                          ?? tracked;
+            try
+            {
+                if (File.Exists(dataFile))
+                    tracked = Serialization.FromJson<Dictionary<Guid, TrackedGame>>(File.ReadAllText(dataFile))
+                              ?? tracked;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Lecture de tracked.json impossible");
+            }
         }
 
-        private void Save() => File.WriteAllText(dataFile, JsonConvert.SerializeObject(tracked, Newtonsoft.Json.Formatting.Indented));
+        private void Save() => File.WriteAllText(dataFile, Serialization.ToJson(tracked, true));
 
         // menu clic drroit
         public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
@@ -269,24 +283,32 @@ namespace SteamBuildTracker
         }
 
         // merci steam
-        private class SteamSearchItem { public int Id; public string Name; }
+
 
         private async Task<List<SteamSearchItem>> SearchSteamAsync(string term)
         {
             var url = $"https://store.steampowered.com/api/storesearch/?term={Uri.EscapeDataString(term)}&cc=fr&l=french";
-            var json = JObject.Parse(await http.GetStringAsync(url));
-            return json["items"].Select(i => new SteamSearchItem
-            {
-                Id = (int)i["id"],
-                Name = (string)i["name"]
-            }).ToList();
+            var resp = Serialization.FromJson<SteamSearchResponse>(await http.GetStringAsync(url));
+            return resp?.Items ?? new List<SteamSearchItem>();
         }
 
         // Version simple via API steam encore merci gabe le goat
         private async Task<string> GetOnlineBuildAsync(int appId, string branch)
         {
-            var json = JObject.Parse(await http.GetStringAsync($"https://api.steamcmd.net/v1/info/{appId}"));
-            return (string)json["data"][appId.ToString()]["depots"]["branches"][branch]["buildid"];
+            var resp = Serialization.FromJson<SteamCmdResponse>(
+                await http.GetStringAsync($"https://api.steamcmd.net/v1/info/{appId}"));
+
+            string buildId = null;
+            if (resp?.Data != null && resp.Data.TryGetValue(appId.ToString(), out var app)
+                && app?.Depots?.Branches != null && app.Depots.Branches.TryGetValue(branch, out var b))
+            {
+                buildId = b?.BuildId;
+            }
+
+            if (string.IsNullOrEmpty(buildId))
+                throw new Exception($"Build introuvable pour l'App ID {appId}, branche '{branch}'.");
+
+            return buildId;
         }
     }
 }
