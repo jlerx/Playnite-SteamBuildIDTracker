@@ -1,4 +1,4 @@
-# Steam Build Tracker pour Playnite
+# Steam BuildID Tracker pour Playnite
  
 Extension [Playnite](https://playnite.link) qui suit les **build ID Steam** de vos jeux, y compris ceux qui ne sont liés à aucun launcher (jeux installés en local , copies hors Steam, 🏴‍☠️). Quand Steam publie un nouveau build, vous recevez une notification dans Playnite : il est temps de mettre le jeu à jour.
  
