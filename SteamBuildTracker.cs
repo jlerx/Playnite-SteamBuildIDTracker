@@ -234,6 +234,7 @@ namespace SteamBuildTracker
             t.LocalBuildId = await GetOnlineBuildAsync(t.AppId, t.Branch);
             t.LastKnownOnlineBuildId = t.LocalBuildId;
             Save();
+            PlayniteApi.Notifications.Remove(NotificationId(game.Id, t.LocalBuildId)); // ajout
         }
 
         // Vérification
@@ -255,6 +256,30 @@ namespace SteamBuildTracker
             }
         }
 
+        private static string NotificationId(Guid gameId, string build) => $"buildtracker_{gameId}_{build}";
+
+        private void OnUpdateNotificationClicked(Guid gameId, string onlineBuild)
+        {
+            if (!tracked.TryGetValue(gameId, out var t)) return;
+            var game = PlayniteApi.Database.Games.Get(gameId);
+            if (game == null) return;
+
+            var result = PlayniteApi.Dialogs.ShowMessage(
+                $"{game.Name}\n\n" +
+                $"Votre build : {t.LocalBuildId}\n" +
+                $"Build en ligne : {onlineBuild}\n\n" +
+                $"Avez-vous mis le jeu à jour ?\nEnregistrer le build {onlineBuild} comme build actuel ?",
+                "Mise à jour du jeu",
+                System.Windows.MessageBoxButton.YesNo);
+
+            if (result != System.Windows.MessageBoxResult.Yes) return;
+
+            t.LocalBuildId = onlineBuild;
+            t.LastKnownOnlineBuildId = onlineBuild;
+            Save();
+            PlayniteApi.Notifications.Remove(NotificationId(gameId, onlineBuild));
+        }
+
         private async Task CheckGameAsync(Game game, bool verbose)
         {
             if (!tracked.TryGetValue(game.Id, out var t)) return;
@@ -267,9 +292,10 @@ namespace SteamBuildTracker
                 if (online != t.LocalBuildId)
                 {
                     PlayniteApi.Notifications.Add(new NotificationMessage(
-                        $"buildtracker_{game.Id}_{online}",
-                        $"{game.Name} : nouveau build {online} (le vôtre : {t.LocalBuildId}). Mise à jour requise.",
-                        NotificationType.Info));
+                        NotificationId(game.Id, online),
+                        $"{game.Name} : nouveau build {online} (le vôtre : {t.LocalBuildId}). Cliquez pour mettre à jour le suivi.",
+                        NotificationType.Info,
+                        () => OnUpdateNotificationClicked(game.Id, online)));
                 }
                 else if (verbose)
                 {
